@@ -125,14 +125,70 @@ update_goose() {
     ) &
 }
 
+# Resolve the Gemini model to actually use. The user-configured model may not
+# exist for their API key (a typo'd or renamed model makes Goose exit code 0
+# ~3s after launch, leaving a dead terminal). Before launch, ask Gemini which
+# models the key can call and fall back to a working default when the
+# configured one is not among them.
+#
+# This is the one place the boot path is allowed to touch the network, so the
+# lookup is strictly bounded (short timeout, single attempt, no retries) and
+# any failure is non-fatal: we keep the user's model and let startup proceed.
+# Echoes the resolved model on stdout; all logging goes to stderr.
+resolve_goose_model() {
+    local model="$1" api_key="$2"
+    local default_model="gemini-2.5-flash"
+
+    # No usable key → nothing to validate against; keep the model as-is.
+    if [ -z "$api_key" ] || [ "$api_key" = "null" ]; then
+        echo "$model"
+        return 0
+    fi
+
+    # Ask Gemini for the models this key can call. Guard the whole network
+    # pipeline so a failure under `set -e`/`pipefail` can't abort startup:
+    # capture into a var with `|| true`, then treat empty as "lookup failed".
+    local available
+    available=$(curl -fsSL --connect-timeout 10 --max-time 15 \
+        "https://generativelanguage.googleapis.com/v1beta/models?key=${api_key}" 2>/dev/null \
+        | jq -r '.models[] | select(.supportedGenerationMethods // [] | index("generateContent")) | .name | sub("^models/"; "")' 2>/dev/null \
+        || true)
+
+    if [ -z "$available" ]; then
+        bashio::log.warning "Could not verify Gemini models (no network or API error); using configured model '${model}' as-is" >&2
+        echo "$model"
+        return 0
+    fi
+
+    # Configured model is callable → keep it.
+    if echo "$available" | grep -qxF "$model"; then
+        echo "$model"
+        return 0
+    fi
+
+    # Not callable → pick a fallback and say exactly what happened and why.
+    local fallback=""
+    if echo "$available" | grep -qxF "$default_model"; then
+        fallback="$default_model"
+    else
+        fallback=$(echo "$available" | grep -m1 -E '^gemini-.*flash' || true)
+        [ -z "$fallback" ] && fallback=$(echo "$available" | head -n1)
+    fi
+
+    bashio::log.warning "Configured goose_model '${model}' is not available to this API key" >&2
+    bashio::log.warning "Available models: $(echo "$available" | tr '\n' ' ')" >&2
+    bashio::log.warning "Falling back to '${fallback}'" >&2
+    echo "$fallback"
+}
+
 # Export the Gemini API key and provider settings so the auto-launched Goose
 # can use them. The tmux session command runs through a non-interactive
 # shell, so these must be in the environment ttyd/tmux inherits — a ~/.bashrc
 # export would never reach it. The key value itself is never logged.
+# The resolved model and api key are passed in from main() so the env var
+# and config.yaml are written from one validated value and never diverge.
 export_gemini_config() {
-    local api_key model
-    api_key=$(bashio::config 'gemini_api_key' '')
-    model=$(bashio::config 'goose_model' 'gemini-2.5-flash')
+    local model="$1" api_key="$2"
 
     # Tell Goose which provider/model to use without an interactive wizard.
     export GOOSE_PROVIDER="gemini"
@@ -150,12 +206,12 @@ export_gemini_config() {
 
 # Write a minimal Goose config.yaml so the provider/model are set even for
 # commands that read the file directly. Only (re)write the provider lines;
-# never store the API key here (it stays in the environment).
+# never store the API key here (it stays in the environment). The resolved
+# model is passed in from main() so it matches the exported GOOSE_MODEL.
 write_goose_config() {
+    local model="$1"
     local goose_config_dir="$XDG_CONFIG_HOME/goose"
     local config_file="$goose_config_dir/config.yaml"
-    local model
-    model=$(bashio::config 'goose_model' 'gemini-2.5-flash')
 
     mkdir -p "$goose_config_dir"
 
@@ -273,8 +329,17 @@ main() {
 
     init_environment
     setup_commands
-    export_gemini_config
-    write_goose_config
+
+    # Read the config once, resolve the model once (validating it against the
+    # API key when possible), and thread the one value into both writers so
+    # the exported GOOSE_MODEL and config.yaml can never diverge.
+    local configured_model api_key resolved_model
+    configured_model=$(bashio::config 'goose_model' 'gemini-2.5-flash')
+    api_key=$(bashio::config 'gemini_api_key' '')
+    resolved_model=$(resolve_goose_model "$configured_model" "$api_key")
+
+    export_gemini_config "$resolved_model" "$api_key"
+    write_goose_config "$resolved_model"
     update_goose
     install_persistent_packages
     start_web_terminal

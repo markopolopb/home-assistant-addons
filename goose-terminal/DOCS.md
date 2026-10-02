@@ -22,7 +22,7 @@ Goose config and session history are stored under `/data` and persist across res
 | Option | Default | Description |
 |--------|---------|-------------|
 | `gemini_api_key` | `""` | Your Google Gemini API key (from [AI Studio](https://aistudio.google.com/app/apikey)). Exported into the environment as `GEMINI_API_KEY`/`GOOGLE_API_KEY` so Goose can reach Gemini. Masked in the UI, but included in HA backups like all add-on options. |
-| `goose_model` | `"gemini-2.5-flash"` | Gemini model Goose uses, e.g. `gemini-2.5-flash` or `gemini-2.5-pro`. |
+| `goose_model` | `"gemini-2.5-flash"` | Gemini model Goose uses, e.g. `gemini-2.5-flash` or `gemini-2.5-pro`. Validated at startup against the models available to your API key; an unavailable (or typo'd) model falls back to a working default, with the available models listed in the add-on log. |
 | `auto_launch_goose` | `true` | Start a Goose session immediately when the terminal opens. Set to `false` to get a shell instead (run `goose session` yourself). |
 | `goose_auto_update` | `true` | Keep Goose current: installs the official build into `/data` and updates it in the background on each startup. |
 | `working_directory` | `""` | Directory the terminal session starts in (default `/config`), e.g. `/config/ai_repo`. A non-existent path falls back to `/config` with a warning. |
@@ -81,5 +81,5 @@ The terminal starts in `/config` (your Home Assistant configuration). Also mount
 ## Troubleshooting
 
 - **Goose can't reach Gemini / authentication errors**: confirm `gemini_api_key` is set in the add-on configuration and restart the add-on. Check the add-on log for the "Gemini API key loaded" message.
-- **Model errors**: make sure `goose_model` is a valid Gemini model name your key has access to (e.g. `gemini-2.5-flash`).
+- **Model errors**: `goose_model` is validated at startup against the models your key can call. If it is unavailable (e.g. a typo or a model your key lacks access to), the add-on logs a warning, lists the available models, and automatically falls back to a working default (preferring `gemini-2.5-flash`) so the terminal still launches. Check the add-on log to see which model is in use.
 - **Goose exits immediately**: restart the add-on so the background auto-updater can fetch the latest Goose; check the add-on log for update messages.

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0
+
+- Validate `goose_model` at startup against the models the Gemini API key can
+  call (ListModels), matching only models that support `generateContent`.
+- An unavailable or typo'd model now falls back to a working default
+  (preferring `gemini-2.5-flash`) with the available models logged, instead of
+  Goose exiting silently (code 0) a few seconds after launch.
+- The validation lookup is strictly bounded (short timeout, single attempt, no
+  retries) and non-fatal: startup never blocks on it, and any failure keeps the
+  configured model unchanged.
+
 ## 1.0.0
 
 - Initial release.

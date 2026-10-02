@@ -1,7 +1,7 @@
 ---
 name: "Goose Terminal"
 description: "Web terminal with Block's Goose CLI AI agent, wired to Google Gemini"
-version: "1.0.0"
+version: "1.1.0"
 slug: "goose_terminal"
 init: false
 
