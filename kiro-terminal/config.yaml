@@ -1,0 +1,63 @@
+---
+name: "Kiro Terminal"
+description: "Web terminal with Amazon's Kiro CLI AI assistant and persistent auth"
+version: "1.0.0"
+slug: "kiro_terminal"
+init: false
+
+# Supported architectures. Kiro CLI ships Linux builds for x86_64 and
+# aarch64; the add-on uses the musl build so it runs on the Alpine base.
+arch:
+  - aarch64
+  - amd64
+
+# External resources
+url: "https://github.com/markopolopb/home-assistant-addons"
+
+# Web interface configuration
+ingress: true
+ingress_port: 7681
+panel_icon: mdi:console
+panel_title: "Kiro Terminal"
+panel_admin: true
+
+# Port configuration
+ports:
+  7681/tcp: null
+ports_description:
+  7681/tcp: "Direct web terminal access. Not needed for ingress, and NOT password-protected: anyone who can reach this port gets a root shell in the container, with no Home Assistant login. Leave unset unless the port is firewalled."
+
+# Add-on configuration options
+options:
+  auto_launch_kiro: true
+  kiro_auto_update: true
+  working_directory: ""
+  kiro_extra_args: ""
+  persistent_apk_packages: []
+  persistent_pip_packages: []
+schema:
+  auto_launch_kiro: bool?
+  kiro_auto_update: bool?
+  working_directory: str?
+  kiro_extra_args: str?
+  persistent_apk_packages:
+    - str
+  persistent_pip_packages:
+    - str
+
+# Volume mappings for file access
+map:
+  - config:rw            # Home Assistant configuration files
+  - all_addon_configs:rw # Other add-ons' config directories (/addon_configs)
+  - share:rw             # Shared folder between add-ons and HA
+
+# API access for Home Assistant integration
+hassio_api: true
+hassio_role: manager
+homeassistant_api: true
+
+# Service startup configuration
+startup: services
+
+# Web UI access URL
+webui: http://[HOST]:[PORT:7681]/
